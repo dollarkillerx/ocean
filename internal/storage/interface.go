@@ -8,6 +8,7 @@ import (
 type Interface interface {
 
 	// index scheam
+
 	ExIndex(index string) error
 	CreateIndex(index string, schema models.Schema) error
 	DelIndex(index string) error

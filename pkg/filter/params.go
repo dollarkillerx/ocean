@@ -5,4 +5,7 @@ type Params struct {
 }
 
 type Param struct {
+	FilterType FilterType  `json:"filter_type"` // filter type
+	Key        string      `json:"key"`
+	Value      interface{} `json:"value"`
 }
