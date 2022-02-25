@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package rpc;
+option go_package = "rpc/ocean;ocean";
+
+// MVP Don't use the streaming API yet
+
+service Ocean {
+  rpc Ask(AskRequest) returns (AskResponse);
+}
+
+enum Action {
+  ACTION_COUNT = 0;
+}
+
+message AskRequest {
+  Action action = 1; // action
+  string index = 2;  // index
+  bytes payload = 3; // payload
+}
+
+message AskResponse {
+  string code = 1; // code stats
+  string message = 2; // error message
+  bytes payload = 3; // payload
+}
