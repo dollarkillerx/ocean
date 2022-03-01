@@ -3,8 +3,9 @@ package filter
 type FilterType string
 
 const (
-	FilterAnd  FilterType = "and"
-	FilterOr   FilterType = "or"
+	FilterBool FilterType = "bool"
+	FilterAnd  FilterType = "must"
+	FilterOr   FilterType = "should"
 	FilterEq   FilterType = "eq"   // =
 	FilterNeq  FilterType = "neq"  // !=
 	FilterGt   FilterType = "gt"   // >
@@ -12,4 +13,15 @@ const (
 	FilterLt   FilterType = "lt"   // <
 	FilterElt  FilterType = "elt"  // <=
 	FilterLike FilterType = "like" // like
+)
+
+func (f FilterType) String() string {
+	return string(f)
+}
+
+type SortType string
+
+const (
+	SortDesc SortType = "desc"
+	SortAsc  SortType = "asc"
 )
