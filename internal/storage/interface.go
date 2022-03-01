@@ -9,7 +9,7 @@ type Interface interface {
 
 	// index scheam
 
-	ExIndex(index string) error
+	ExIndex(index string) bool
 	CreateIndex(index string, schema models.Schema) error
 	DelIndex(index string) error
 	UpdateIndex(index string, schema models.Schema) error

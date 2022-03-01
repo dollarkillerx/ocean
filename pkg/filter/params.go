@@ -1,7 +1,8 @@
 package filter
 
 type Params struct {
-	Param []Param `json:"param"`
+	Param      []Param    `json:"param"`
+	FilterType FilterType `json:"filter_type"` // filter type
 
 	// 分页
 	From int `json:"from"`

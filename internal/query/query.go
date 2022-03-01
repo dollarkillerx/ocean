@@ -24,11 +24,12 @@ func ParseQuery(input []byte) (params *filter.Params, err error) {
 		}
 		andList, andEx := m[filter.FilterAnd.String()]
 		orList, orEx := m[filter.FilterOr.String()]
-		if !andEx && !orEx {
+		if !andEx && !orEx || andEx && orEx {
 			return nil, errors.New("parse error")
 		}
 
 		if andList != nil {
+			result.FilterType = filter.FilterAnd
 			aList, ok := andList.([]interface{})
 			if !ok {
 				return nil, errors.New("parse error")
@@ -48,6 +49,7 @@ func ParseQuery(input []byte) (params *filter.Params, err error) {
 			}
 		}
 		if orList != nil {
+			result.FilterType = filter.FilterOr
 			oList, ok := orList.([]interface{})
 			if !ok {
 				return nil, errors.New("parse error")
