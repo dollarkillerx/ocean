@@ -10,7 +10,11 @@ service Ocean {
 }
 
 enum Action {
-  ACTION_COUNT = 0;
+  ACTION_UNKNOWN = 0;
+  ACTION_MIGRATE = 1; // migrate
+  ACTION_INSERT = 2;  // insert
+  ACTION_SEARCH = 3;  // search
+  ACTION_DELETE = 4;  // delete
 }
 
 message AskRequest {
