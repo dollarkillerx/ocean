@@ -134,39 +134,7 @@ func (s *Storage) SearchData(index string, filter filter.Params) ([]interface{},
 	panic("implement me")
 }
 
-func (s *Storage) searchData(index string, filterParams filter.Params) ([]interface{}, error) {
-	schema := s.getSchema(index)
-	if schema == nil {
-		return nil, fmt.Errorf("not found: %s", index)
-	}
-
-	for _, v := range filterParams.Param {
-		switch v.FilterType {
-		case filter.FilterOr:
-
-		case filter.FilterAnd:
-
-		case filter.FilterLt:
-
-		case filter.FilterEq:
-
-		case filter.FilterNeq:
-
-		case filter.FilterGt:
-
-		case filter.FilterEgt:
-
-		case filter.FilterElt:
-
-		case filter.FilterLike:
-
-		default:
-			return nil, errors.New("filter sql key is nil")
-		}
-	}
-}
-
-func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.Schema) (result []interface{}, err error) {
+func (s *Storage) searchData(index string, filterParams filter.Params) (result []interface{}, err error) {
 	defer func() {
 		if er := recover(); er != nil {
 			log.Println(er)
@@ -175,11 +143,9 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 		}
 	}()
 
-	if fil.Key == "" {
-		return nil, errors.New("filter sql key is nil")
-	}
-	if fil.Value == nil && !(fil.FilterType == filter.FilterEq || fil.FilterType == filter.FilterNeq) {
-		return nil, errors.New("filter sql key is nil")
+	schema := s.getSchema(index)
+	if schema == nil {
+		return nil, fmt.Errorf("not found: %s", index)
 	}
 
 	lock := s.DataRWLock.Lock(index)
@@ -187,7 +153,85 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 
 	da := s.getListData(index)
 
-	for _, v := range *da {
+	for _, v := range filterParams.Param {
+		switch v.FilterType {
+		case filter.FilterOr, filter.FilterAnd, filter.FilterLt, filter.FilterEq, filter.FilterNeq, filter.FilterGt, filter.FilterEgt, filter.FilterElt, filter.FilterLike:
+			data, err := s.searchBaseData(v, *schema, *da)
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, errors.New("filter sql key is nil")
+		}
+	}
+
+	return nil, nil
+}
+
+func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []map[string]interface{}) (result []interface{}, err error) {
+	defer func() {
+		if er := recover(); er != nil {
+			log.Println(er)
+			err = errors.New("internal filter sql key is nil")
+			return
+		}
+	}()
+
+	if fil.Key == "" && !(fil.FilterType == filter.FilterAnd || fil.FilterType == filter.FilterOr) {
+		return nil, errors.New("filter sql key is nil")
+	}
+	if fil.Value == nil && !(fil.FilterType == filter.FilterEq || fil.FilterType == filter.FilterNeq || fil.FilterType == filter.FilterAnd || fil.FilterType == filter.FilterOr) {
+		return nil, fmt.Errorf("filter sql val is nil KEY: %s", fil.Key)
+	}
+
+	switch fil.FilterType {
+	case filter.FilterAnd:
+		vrs := map[string]andStruct{}
+		for _, vf := range fil.Params {
+			data, err := s.searchBaseData(vf, schema, da)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, vv := range data {
+				m, ok := vv.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				pOceanID, ok := m["ocean_id"]
+				if !ok {
+					continue
+				}
+				oceanID, ok := pOceanID.(string)
+				data, ex := vrs[oceanID]
+				if !ex {
+					data = andStruct{
+						data:  vv,
+						count: 0,
+					}
+				}
+				data.count += 1
+				vrs[oceanID] = data
+			}
+		}
+		// 求和
+		for _, vb := range vrs {
+			if vb.count == len(fil.Params) {
+				result = append(result, vb)
+			}
+		}
+	case filter.FilterOr:
+		for _, vf := range fil.Params {
+			data, err := s.searchBaseData(vf, schema, da)
+			if err != nil {
+				return nil, err
+			}
+
+			result = append(result, data...)
+		}
+	}
+
+	for _, v := range da {
 		schemaType, ex := schema[fil.Key]
 		if !ex {
 			return nil, fmt.Errorf("nonexistent field: %s", fil.Key)
@@ -196,10 +240,6 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 		kVal, ex := v[fil.Key]
 
 		switch fil.FilterType {
-		case filter.FilterAnd:
-
-		case filter.FilterOr:
-
 		case filter.FilterEq:
 			if !ex {
 				if fil.Value == nil {
@@ -224,7 +264,7 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			}
 
 			switch schemaType {
-			case enum.SchemaInt64:
+			case enum.SchemaInt64, enum.SchemaTimestamp:
 				i, ok := kVal.(int64)
 				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
@@ -235,14 +275,6 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
 				i2, i2Ok := fil.Value.(float64)
-				if ok && i2Ok {
-					if i < i2 {
-						result = append(result, v)
-					}
-				}
-			case enum.SchemaTimestamp:
-				i, ok := kVal.(int64)
-				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
 					if i < i2 {
 						result = append(result, v)
@@ -257,7 +289,7 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			}
 
 			switch schemaType {
-			case enum.SchemaInt64:
+			case enum.SchemaInt64, enum.SchemaTimestamp:
 				i, ok := kVal.(int64)
 				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
@@ -268,14 +300,6 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
 				i2, i2Ok := fil.Value.(float64)
-				if ok && i2Ok {
-					if i > i2 {
-						result = append(result, v)
-					}
-				}
-			case enum.SchemaTimestamp:
-				i, ok := kVal.(int64)
-				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
 					if i > i2 {
 						result = append(result, v)
@@ -290,7 +314,7 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			}
 
 			switch schemaType {
-			case enum.SchemaInt64:
+			case enum.SchemaInt64, enum.SchemaTimestamp:
 				i, ok := kVal.(int64)
 				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
@@ -301,14 +325,6 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
 				i2, i2Ok := fil.Value.(float64)
-				if ok && i2Ok {
-					if i >= i2 {
-						result = append(result, v)
-					}
-				}
-			case enum.SchemaTimestamp:
-				i, ok := kVal.(int64)
-				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
 					if i >= i2 {
 						result = append(result, v)
@@ -323,7 +339,7 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			}
 
 			switch schemaType {
-			case enum.SchemaInt64:
+			case enum.SchemaInt64, enum.SchemaTimestamp:
 				i, ok := kVal.(int64)
 				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
@@ -334,14 +350,6 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
 				i2, i2Ok := fil.Value.(float64)
-				if ok && i2Ok {
-					if i <= i2 {
-						result = append(result, v)
-					}
-				}
-			case enum.SchemaTimestamp:
-				i, ok := kVal.(int64)
-				i2, i2Ok := fil.Value.(int64)
 				if ok && i2Ok {
 					if i <= i2 {
 						result = append(result, v)
@@ -373,4 +381,9 @@ func (s *Storage) searchBaseData(index string, fil filter.Param, schema models.S
 	}
 
 	return result, nil
+}
+
+type andStruct struct {
+	data  interface{}
+	count int
 }
