@@ -3,11 +3,92 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"testing"
 	"time"
 
 	"github.com/dollarkillerx/ocean/internal/utils"
+	"github.com/dollarkillerx/ocean/pkg/enum"
+	"github.com/dollarkillerx/ocean/pkg/filter"
+	"github.com/dollarkillerx/ocean/pkg/models"
 )
+
+func TestInsertAndSelect(t *testing.T) {
+	log.SetFlags(log.Lshortfile)
+	storage := New()
+
+	idx := "storage_v1"
+
+	// create index
+
+	err := storage.CreateIndex(idx, models.Schema{
+		"name":        enum.SchemaString,
+		"age":         enum.SchemaInt64,
+		"money":       enum.SchemaFloat64,
+		"create_time": enum.SchemaTimestamp,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// insert
+
+	for i := 0; i < 100; i++ {
+		_, err := storage.InsertDatas(idx, []map[string]interface{}{
+			{
+				"name":        fmt.Sprintf("wamg: %d", i),
+				"age":         i,
+				"money":       float64(i) + 100 + 0.1,
+				"create_time": time.Now().Unix(),
+			},
+		})
+		if err != nil {
+			log.Fatalln(err)
+		}
+		//fmt.Println("ins: ", datas)
+	}
+
+	data, err := storage.searchData(idx, filter.Params{})
+	if err != nil {
+		panic(err)
+	}
+
+	//log.Println(len(data))
+	//log.Println(data)
+
+	data, err = storage.searchData(idx, filter.Params{
+		FilterType: filter.FilterAnd,
+		Param: []filter.Param{
+			//{
+			//	FilterType: filter.FilterGt,
+			//	Key:        "age",
+			//	Value:      30,
+			//},
+			{
+				FilterType: filter.FilterLike,
+				Key:        "name",
+				Value:      "wamg",
+			},
+			{
+				FilterType: filter.FilterAnd,
+				Key:        "age",
+				Params: []filter.Param{
+					{
+						FilterType: filter.FilterGt,
+						Key:        "age",
+						Value:      30,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	log.Println(len(data))
+	log.Println(data)
+}
 
 func TestSchema(t *testing.T) {
 	//var schema map[string]*models.Schema
