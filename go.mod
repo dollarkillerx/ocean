@@ -3,6 +3,7 @@ module github.com/dollarkillerx/ocean
 go 1.17
 
 require (
+	github.com/bwmarrin/snowflake v0.3.0
 	google.golang.org/grpc v1.44.0
 	google.golang.org/protobuf v1.27.1
 )
