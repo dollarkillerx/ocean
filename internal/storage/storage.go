@@ -3,12 +3,12 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"github.com/dollarkillerx/ocean/pkg/enum"
 	"log"
 	"strings"
 	"sync"
 
 	"github.com/dollarkillerx/ocean/internal/utils"
+	"github.com/dollarkillerx/ocean/pkg/enum"
 	"github.com/dollarkillerx/ocean/pkg/filter"
 	"github.com/dollarkillerx/ocean/pkg/models"
 )
@@ -153,6 +153,7 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 
 	da := s.getListData(index)
 
+	vrs := map[string]andStruct{}
 	for _, v := range filterParams.Param {
 		switch v.FilterType {
 		case filter.FilterOr, filter.FilterAnd, filter.FilterLt, filter.FilterEq, filter.FilterNeq, filter.FilterGt, filter.FilterEgt, filter.FilterElt, filter.FilterLike:
@@ -160,9 +161,45 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 			if err != nil {
 				return nil, err
 			}
+
+			for _, vv := range data {
+				m, ok := vv.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				pOceanID, ok := m["ocean_id"]
+				if !ok {
+					continue
+				}
+				oceanID, ok := pOceanID.(string)
+				data, ex := vrs[oceanID]
+				if !ex {
+					data = andStruct{
+						data:  vv,
+						count: 0,
+					}
+				}
+				data.count += 1
+				vrs[oceanID] = data
+			}
 		default:
 			return nil, errors.New("filter sql key is nil")
 		}
+	}
+
+	switch filterParams.FilterType {
+	case filter.FilterAnd:
+		for _, vb := range vrs {
+			if vb.count == len(filterParams.Param) {
+				result = append(result, vb)
+			}
+		}
+	case filter.FilterOr:
+		for _, vb := range vrs {
+			result = append(result, vb)
+		}
+	default:
+		return nil, errors.New("filter sql key is nil")
 	}
 
 	return nil, nil
@@ -221,13 +258,38 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			}
 		}
 	case filter.FilterOr:
+		vrs := map[string]andStruct{}
+
 		for _, vf := range fil.Params {
 			data, err := s.searchBaseData(vf, schema, da)
 			if err != nil {
 				return nil, err
 			}
 
-			result = append(result, data...)
+			for _, vv := range data {
+				m, ok := vv.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				pOceanID, ok := m["ocean_id"]
+				if !ok {
+					continue
+				}
+				oceanID, ok := pOceanID.(string)
+				data, ex := vrs[oceanID]
+				if !ex {
+					data = andStruct{
+						data:  vv,
+						count: 0,
+					}
+				}
+				data.count += 1
+				vrs[oceanID] = data
+			}
+		}
+
+		for _, vb := range vrs {
+			result = append(result, vb)
 		}
 	}
 
