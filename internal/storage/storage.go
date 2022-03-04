@@ -212,7 +212,14 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 		return nil, fmt.Errorf("not found: %s", index)
 	}
 
-	lock := s.DataRWLock.Lock(index)
+	for _, v := range filterParams.Sort {
+		_, ex := (*schema)[v.Key]
+		if !ex {
+			return nil, fmt.Errorf("illegal field: %s", v.Key)
+		}
+	}
+
+	lock := s.DataRWLock.RLock(index)
 	defer lock.Unlock()
 
 	da := s.getListData(index)
@@ -283,10 +290,67 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 	}
 
 	// order by
+	for _, v := range filterParams.Sort {
+		schemaType := (*schema)[v.Key]
+		switch schemaType {
+		case enum.SchemaInt64, enum.SchemaTimestamp:
+			switch v.SortType {
+			case filter.SortDesc:
+				for ic := range result {
+					m, ex := result[ic].(map[string]interface{})
+					if !ex {
+						panic("what fuck")
+					}
+					i, ex := m[v.Key]
 
+				}
+			case filter.SortAsc:
+
+			}
+		case enum.SchemaFloat64:
+			switch v.SortType {
+			case filter.SortDesc:
+
+			case filter.SortAsc:
+
+			}
+		}
+	}
 	// limit offset
 
 	return result, nil
+}
+
+type vSort struct {
+	key  string
+	desc bool
+	fiType enum.SchemaType
+	data []map[string]interface{}
+}
+
+func (a vSort) Len() int {
+	return len(a.data)
+}
+func (a vSort) Less(i, j int) bool {
+	av,aEx := a.data[i][a.key]
+	bv,bEx := a.data[j][a.key]
+	if !aEx && a.desc {
+		return false
+	}
+	if !aEx && !a.desc {
+		return true
+	}
+
+	if aEx && bEx {
+		switch a[i]. {
+
+		}
+	}
+
+	return true
+}
+func (a vSort) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
 }
 
 func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []map[string]interface{}) (result []interface{}, err error) {
