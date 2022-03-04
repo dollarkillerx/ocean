@@ -48,6 +48,14 @@ func TestInsertAndSelect(t *testing.T) {
 		//fmt.Println("ins: ", datas)
 	}
 
+	_, err = storage.InsertDatas(idx, []map[string]interface{}{
+		{
+			"name":        fmt.Sprintf("wamg: %d", 9),
+			"age":         80,
+			"create_time": time.Now().Unix(),
+		},
+	})
+
 	data, err := storage.searchData(idx, filter.Params{})
 	if err != nil {
 		panic(err)
@@ -59,11 +67,11 @@ func TestInsertAndSelect(t *testing.T) {
 	data, err = storage.searchData(idx, filter.Params{
 		FilterType: filter.FilterAnd,
 		Param: []filter.Param{
-			//{
-			//	FilterType: filter.FilterGt,
-			//	Key:        "age",
-			//	Value:      30,
-			//},
+			{
+				FilterType: filter.FilterGt,
+				Key:        "age",
+				Value:      30,
+			},
 			{
 				FilterType: filter.FilterLike,
 				Key:        "name",
@@ -71,16 +79,40 @@ func TestInsertAndSelect(t *testing.T) {
 			},
 			{
 				FilterType: filter.FilterAnd,
-				Key:        "age",
 				Params: []filter.Param{
 					{
 						FilterType: filter.FilterGt,
 						Key:        "age",
-						Value:      30,
+						Value:      20,
+					},
+					{
+						FilterType: filter.FilterGt,
+						Key:        "money",
+						Value:      60,
+					},
+					{
+						FilterType: filter.FilterAnd,
+						Params: []filter.Param{
+							{
+								FilterType: filter.FilterGt,
+								Key:        "money",
+								Value:      180,
+							},
+						},
 					},
 				},
 			},
 		},
+
+		Sort: []filter.FilterSort{
+			{
+				Key:      "age",
+				SortType: filter.SortDesc,
+			},
+		},
+
+		From: 0,
+		Size: 10,
 	})
 	if err != nil {
 		panic(err)

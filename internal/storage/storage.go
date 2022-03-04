@@ -99,6 +99,11 @@ func (s *Storage) UpdateIndex(index string, schema models.Schema) error {
 }
 
 func (s *Storage) InsertDatas(index string, datas []map[string]interface{}) (count int, err error) {
+	schema := s.getSchema(index)
+	if schema == nil {
+		return 0, fmt.Errorf("not found index: %s", index)
+	}
+
 	lock := s.DataRWLock.Lock(index)
 	defer lock.Unlock()
 
@@ -109,6 +114,52 @@ func (s *Storage) InsertDatas(index string, datas []map[string]interface{}) (cou
 
 	for _, v := range datas {
 		v["ocean_id"] = utils.GenerateID()
+		for k1, v2 := range v {
+			schemaType, ok := (*schema)[k1]
+			if !ok {
+				return 0, fmt.Errorf("illegal field: %s", k1)
+			}
+			switch schemaType {
+			case enum.SchemaInt64, enum.SchemaTimestamp:
+				{
+					i, ok := v2.(int)
+					if ok {
+						v[k1] = int64(i)
+					}
+				}
+				{
+					i, ok := v2.(int32)
+					if ok {
+						v[k1] = int64(i)
+					}
+				}
+			case enum.SchemaFloat64:
+				{
+					i, ok := v2.(float32)
+					if ok {
+						v[k1] = float64(i)
+					}
+				}
+				{
+					i, ok := v2.(int64)
+					if ok {
+						v[k1] = float64(i)
+					}
+				}
+				{
+					i, ok := v2.(int)
+					if ok {
+						v[k1] = float64(i)
+					}
+				}
+				{
+					i, ok := v2.(int32)
+					if ok {
+						v[k1] = float64(i)
+					}
+				}
+			}
+		}
 		*da = append(*da, v)
 	}
 
@@ -153,6 +204,9 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 		}
 	}()
 
+	marshal, err := json.Marshal(filterParams)
+	fmt.Println(string(marshal))
+
 	schema := s.getSchema(index)
 	if schema == nil {
 		return nil, fmt.Errorf("not found: %s", index)
@@ -182,9 +236,8 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 			if err != nil {
 				return nil, err
 			}
-			fmt.Println(data)
-			for _, vv := range data {
-				m, ok := vv.(map[string]interface{})
+			for iv := range data {
+				m, ok := data[iv].(map[string]interface{})
 				if !ok {
 					continue
 				}
@@ -196,20 +249,18 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 				if !ok {
 					continue
 				}
-				data, ex := vrs[oceanID]
+				pdata, ex := vrs[oceanID]
 				if !ex {
-					data = andStruct{
-						data:  vv,
-						count: 0,
+					pdata = andStruct{
+						Data:  data[iv],
+						Count: 0,
 					}
-				}
-				data.count += 1
 
-				marshal, err := json.Marshal(data)
-				if err != nil {
-					return nil, err
+					vrs[oceanID] = pdata
 				}
-				vrs[oceanID] = data
+				pdata.Count += 1
+
+				vrs[oceanID] = pdata
 			}
 		default:
 			return nil, fmt.Errorf("v1 illegal parameter: %s", v.FilterType)
@@ -219,15 +270,13 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 	switch filterParams.FilterType {
 	case filter.FilterAnd:
 		for _, vb := range vrs {
-			fmt.Println(vb.count)
-			fmt.Println(vb.count == len(filterParams.Param))
-			if vb.count == len(filterParams.Param) {
-				result = append(result, vb)
+			if vb.Count == len(filterParams.Param) {
+				result = append(result, vb.Data)
 			}
 		}
 	case filter.FilterOr:
 		for _, vb := range vrs {
-			result = append(result, vb)
+			result = append(result, vb.Data)
 		}
 	default:
 		return nil, fmt.Errorf("v2 illegal parameter: %s", filterParams.FilterType)
@@ -255,14 +304,14 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 	switch fil.FilterType {
 	case filter.FilterAnd:
 		vrs := map[string]andStruct{}
-		for _, vf := range fil.Params {
-			data, err := s.searchBaseData(vf, schema, da)
+		for vi := range fil.Params {
+			data, err := s.searchBaseData(fil.Params[vi], schema, da)
 			if err != nil {
 				return nil, err
 			}
 
-			for _, vv := range data {
-				m, ok := vv.(map[string]interface{})
+			for iv := range data {
+				m, ok := data[iv].(map[string]interface{})
 				if !ok {
 					continue
 				}
@@ -274,21 +323,21 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 				if !ok {
 					continue
 				}
-				data, ex := vrs[oceanID]
+				dt, ex := vrs[oceanID]
 				if !ex {
-					data = andStruct{
-						data:  vv,
-						count: 0,
+					dt = andStruct{
+						Data:  data[iv],
+						Count: 0,
 					}
 				}
-				data.count += 1
-				vrs[oceanID] = data
+				dt.Count += 1
+				vrs[oceanID] = dt
 			}
 		}
 		// 求和
 		for _, vb := range vrs {
-			if vb.count == len(fil.Params) {
-				result = append(result, vb)
+			if vb.Count == len(fil.Params) {
+				result = append(result, vb.Data)
 			}
 		}
 
@@ -296,14 +345,14 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 	case filter.FilterOr:
 		vrs := map[string]andStruct{}
 
-		for _, vf := range fil.Params {
-			data, err := s.searchBaseData(vf, schema, da)
+		for vi := range fil.Params {
+			data, err := s.searchBaseData(fil.Params[vi], schema, da)
 			if err != nil {
 				return nil, err
 			}
 
-			for _, vv := range data {
-				m, ok := vv.(map[string]interface{})
+			for iv := range data {
+				m, ok := data[iv].(map[string]interface{})
 				if !ok {
 					continue
 				}
@@ -312,20 +361,20 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 					continue
 				}
 				oceanID, ok := pOceanID.(string)
-				data, ex := vrs[oceanID]
+				dt, ex := vrs[oceanID]
 				if !ex {
-					data = andStruct{
-						data:  vv,
-						count: 0,
+					dt = andStruct{
+						Data:  data[iv],
+						Count: 0,
 					}
 				}
-				data.count += 1
-				vrs[oceanID] = data
+				dt.Count += 1
+				vrs[oceanID] = dt
 			}
 		}
 
 		for _, vb := range vrs {
-			result = append(result, vb)
+			result = append(result, vb.Data)
 		}
 
 		return result, nil
@@ -358,7 +407,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 				}
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
-				i2, i2Ok := fil.Value.(float64)
+				i2, i2Ok := pFloat64(fil.Value)
 				if ok && i2Ok {
 					if i == i2 {
 						result = append(result, v)
@@ -367,16 +416,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			case enum.SchemaInt64, enum.SchemaTimestamp:
 				{
 					i, ok := kVal.(int64)
-					i2, i2Ok := fil.Value.(int64)
-					if ok && i2Ok {
-						if i == i2 {
-							result = append(result, v)
-						}
-					}
-				}
-				{
-					i, ok := kVal.(int)
-					i2, i2Ok := fil.Value.(int)
+					i2, i2Ok := pInt64(fil.Value)
 					if ok && i2Ok {
 						if i == i2 {
 							result = append(result, v)
@@ -394,10 +434,12 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			}
 		case filter.FilterNeq:
 			if !ex {
-				if fil.Value != nil {
-					result = append(result, v)
-				}
+				continue
 			}
+			if fil.Value == nil {
+				result = append(result, v)
+			}
+
 			switch schemaType {
 			case enum.SchemaString:
 				i, ok := kVal.(string)
@@ -409,7 +451,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 				}
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
-				i2, i2Ok := fil.Value.(float64)
+				i2, i2Ok := pFloat64(fil.Value)
 				if ok && i2Ok {
 					if i != i2 {
 						result = append(result, v)
@@ -418,16 +460,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			case enum.SchemaInt64, enum.SchemaTimestamp:
 				{
 					i, ok := kVal.(int64)
-					i2, i2Ok := fil.Value.(int64)
-					if ok && i2Ok {
-						if i != i2 {
-							result = append(result, v)
-						}
-					}
-				}
-				{
-					i, ok := kVal.(int)
-					i2, i2Ok := fil.Value.(int)
+					i2, i2Ok := pInt64(fil.Value)
 					if ok && i2Ok {
 						if i != i2 {
 							result = append(result, v)
@@ -452,17 +485,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			case enum.SchemaInt64, enum.SchemaTimestamp:
 				{
 					i, ok := kVal.(int64)
-					i2, i2Ok := fil.Value.(int64)
-					if ok && i2Ok {
-						if i < i2 {
-							result = append(result, v)
-						}
-					}
-				}
-
-				{
-					i, ok := kVal.(int)
-					i2, i2Ok := fil.Value.(int)
+					i2, i2Ok := pInt64(fil.Value)
 					if ok && i2Ok {
 						if i < i2 {
 							result = append(result, v)
@@ -471,7 +494,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 				}
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
-				i2, i2Ok := fil.Value.(float64)
+				i2, i2Ok := pFloat64(fil.Value)
 				if ok && i2Ok {
 					if i < i2 {
 						result = append(result, v)
@@ -488,16 +511,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			case enum.SchemaInt64, enum.SchemaTimestamp:
 				{
 					i, ok := kVal.(int64)
-					i2, i2Ok := fil.Value.(int64)
-					if ok && i2Ok {
-						if i > i2 {
-							result = append(result, v)
-						}
-					}
-				}
-				{
-					i, ok := kVal.(int)
-					i2, i2Ok := fil.Value.(int)
+					i2, i2Ok := pInt64(fil.Value)
 					if ok && i2Ok {
 						if i > i2 {
 							result = append(result, v)
@@ -506,7 +520,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 				}
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
-				i2, i2Ok := fil.Value.(float64)
+				i2, i2Ok := pFloat64(fil.Value)
 				if ok && i2Ok {
 					if i > i2 {
 						result = append(result, v)
@@ -524,16 +538,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			case enum.SchemaInt64, enum.SchemaTimestamp:
 				{
 					i, ok := kVal.(int64)
-					i2, i2Ok := fil.Value.(int64)
-					if ok && i2Ok {
-						if i >= i2 {
-							result = append(result, v)
-						}
-					}
-				}
-				{
-					i, ok := kVal.(int)
-					i2, i2Ok := fil.Value.(int)
+					i2, i2Ok := pInt64(fil.Value)
 					if ok && i2Ok {
 						if i >= i2 {
 							result = append(result, v)
@@ -542,7 +547,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 				}
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
-				i2, i2Ok := fil.Value.(float64)
+				i2, i2Ok := pFloat64(fil.Value)
 				if ok && i2Ok {
 					if i >= i2 {
 						result = append(result, v)
@@ -560,16 +565,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 			case enum.SchemaInt64, enum.SchemaTimestamp:
 				{
 					i, ok := kVal.(int64)
-					i2, i2Ok := fil.Value.(int64)
-					if ok && i2Ok {
-						if i <= i2 {
-							result = append(result, v)
-						}
-					}
-				}
-				{
-					i, ok := kVal.(int)
-					i2, i2Ok := fil.Value.(int)
+					i2, i2Ok := pInt64(fil.Value)
 					if ok && i2Ok {
 						if i <= i2 {
 							result = append(result, v)
@@ -578,7 +574,7 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 				}
 			case enum.SchemaFloat64:
 				i, ok := kVal.(float64)
-				i2, i2Ok := fil.Value.(float64)
+				i2, i2Ok := pFloat64(fil.Value)
 				if ok && i2Ok {
 					if i <= i2 {
 						result = append(result, v)
@@ -612,7 +608,37 @@ func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []ma
 	return result, nil
 }
 
+func pInt64(i interface{}) (int64, bool) {
+	switch v := i.(type) {
+	case int64:
+		return v, true
+	case int32:
+		return int64(v), true
+	case int:
+		return int64(v), true
+	}
+
+	return 0, false
+}
+
+func pFloat64(i interface{}) (float64, bool) {
+	switch v := i.(type) {
+	case float32:
+		return float64(v), true
+	case float64:
+		return v, true
+	case int64:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	}
+
+	return 0, false
+}
+
 type andStruct struct {
-	data  interface{}
-	count int
+	Data  interface{}
+	Count int
 }
