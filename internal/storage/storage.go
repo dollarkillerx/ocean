@@ -282,6 +282,10 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 		return nil, fmt.Errorf("v2 illegal parameter: %s", filterParams.FilterType)
 	}
 
+	// order by
+
+	// limit offset
+
 	return result, nil
 }
 
