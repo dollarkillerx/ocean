@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 
@@ -291,49 +292,55 @@ func (s *Storage) searchData(index string, filterParams filter.Params) (result [
 
 	// order by
 	for _, v := range filterParams.Sort {
+		var desc bool
+		switch v.SortType {
+		case filter.SortDesc:
+			desc = true
+		default:
+		}
+
 		schemaType := (*schema)[v.Key]
-		switch schemaType {
-		case enum.SchemaInt64, enum.SchemaTimestamp:
-			switch v.SortType {
-			case filter.SortDesc:
-				for ic := range result {
-					m, ex := result[ic].(map[string]interface{})
-					if !ex {
-						panic("what fuck")
-					}
-					i, ex := m[v.Key]
+		var st = vSort{
+			key:    v.Key,
+			desc:   desc,
+			fiType: schemaType,
+		}
 
-				}
-			case filter.SortAsc:
-
-			}
-		case enum.SchemaFloat64:
-			switch v.SortType {
-			case filter.SortDesc:
-
-			case filter.SortAsc:
-
+		for i := range result {
+			m, ok := result[i].(map[string]interface{})
+			if ok {
+				st.data = append(st.data, m)
 			}
 		}
+
+		sort.Sort(&st)
+
+		var newResult []interface{}
+		for i := range st.data {
+			newResult = append(newResult, st.data[i])
+		}
+
+		result = newResult
 	}
+
 	// limit offset
 
 	return result, nil
 }
 
 type vSort struct {
-	key  string
-	desc bool
+	key    string
+	desc   bool
 	fiType enum.SchemaType
-	data []map[string]interface{}
+	data   []map[string]interface{}
 }
 
 func (a vSort) Len() int {
 	return len(a.data)
 }
 func (a vSort) Less(i, j int) bool {
-	av,aEx := a.data[i][a.key]
-	bv,bEx := a.data[j][a.key]
+	av, aEx := a.data[i][a.key]
+	bv, bEx := a.data[j][a.key]
 	if !aEx && a.desc {
 		return false
 	}
@@ -341,16 +348,52 @@ func (a vSort) Less(i, j int) bool {
 		return true
 	}
 
+	// TODO: 待确认
 	if aEx && bEx {
-		switch a[i]. {
-
+		switch a.fiType {
+		case enum.SchemaInt64, enum.SchemaTimestamp:
+			i2, b := pInt64(av)
+			i3, b2 := pInt64(bv)
+			if b && b2 {
+				if a.desc {
+					if i2 > i3 {
+						return false
+					} else {
+						return false
+					}
+				} else {
+					if i2 > i3 {
+						return true
+					} else {
+						return false
+					}
+				}
+			}
+		case enum.SchemaFloat64:
+			i2, b := pFloat64(av)
+			i3, b2 := pFloat64(bv)
+			if b && b2 {
+				if a.desc {
+					if i2 > i3 {
+						return false
+					} else {
+						return false
+					}
+				} else {
+					if i2 > i3 {
+						return true
+					} else {
+						return false
+					}
+				}
+			}
 		}
 	}
 
 	return true
 }
 func (a vSort) Swap(i, j int) {
-	a[i], a[j] = a[j], a[i]
+	a.data[i], a.data[j] = a.data[j], a.data[i]
 }
 
 func (s *Storage) searchBaseData(fil filter.Param, schema models.Schema, da []map[string]interface{}) (result []interface{}, err error) {

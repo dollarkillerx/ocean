@@ -107,7 +107,7 @@ func TestInsertAndSelect(t *testing.T) {
 		Sort: []filter.FilterSort{
 			{
 				Key:      "age",
-				SortType: filter.SortDesc,
+				SortType: filter.SortAsc,
 			},
 		},
 
@@ -119,7 +119,16 @@ func TestInsertAndSelect(t *testing.T) {
 	}
 
 	log.Println(len(data))
-	log.Println(data)
+	print(data)
+}
+
+func print(i interface{}) {
+	marshal, err := json.Marshal(i)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(string(marshal))
 }
 
 func TestSchema(t *testing.T) {
